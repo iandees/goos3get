@@ -64,6 +64,7 @@ func main() {
 	bucket := flag.String("bucket", "", "The S3 bucket name to read from")
 	key := flag.String("key", "", "The S3 key to read from")
 	output := flag.String("output", "", "The path to write the output to")
+	flag.Parse()
 
 	if *bucket == "" {
 		log.Fatalf("Must provide --bucket")
@@ -90,7 +91,7 @@ func main() {
 	// Create a downloader with the session and default options
 	downloader := s3manager.NewDownloader(sess)
 
-	log.Printf("Starting download of s3://%s/%s, size: %s", *bucket, *key, byteCountDecimalSize(size))
+	log.Printf("Starting download of s3://%s%s, size: %s", *bucket, *key, byteCountDecimalSize(size))
 
 	// Create a file to write the S3 Object contents to.
 	f, err := os.Create(*output)
@@ -98,8 +99,11 @@ func main() {
 		log.Fatalf("Failed to create file %q: %+v", *output, err)
 	}
 
+	// Wrap the file in a progress counter
+	counter := &progressWriter{writer: f}
+
 	// Write the contents of S3 Object to the file
-	n, err := downloader.Download(f, &s3.GetObjectInput{
+	n, err := downloader.Download(counter, &s3.GetObjectInput{
 		Bucket: aws.String(*bucket),
 		Key:    aws.String(*key),
 	})
