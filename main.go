@@ -50,6 +50,8 @@ func main() {
 	bucket := flag.String("bucket", "", "The S3 bucket name to read from")
 	key := flag.String("key", "", "The S3 key to read from")
 	output := flag.String("output", "", "The path to write the output to")
+	partSize := flag.Int64("partSize", 64, "Download part size in megabytes")
+	concurrency := flag.Int("concurrency", 10, "Number of goroutines to use when downloading")
 	flag.Parse()
 
 	if *bucket == "" {
@@ -75,7 +77,10 @@ func main() {
 	}
 
 	// Create a downloader with the session and default options
-	downloader := s3manager.NewDownloader(sess)
+	downloader := s3manager.NewDownloader(sess, func(d *s3manager.Downloader) {
+		d.PartSize = *partSize * 1024 * 1024
+		d.Concurrency = *concurrency
+	})
 
 	log.Printf("Starting download of s3://%s%s, size: %s", *bucket, *key, byteCountDecimalSize(size))
 
