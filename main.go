@@ -1,12 +1,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
-	"io"
 	"log"
 	"os"
-	"sync/atomic"
+	"time"
+
+	"github.com/iandees/progress"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -42,22 +44,6 @@ func byteCountDecimalSize(size int64) string {
 	}
 
 	return fmt.Sprintf("%.1f %cB", float64(size)/float64(div), "kMGTPE"[exp])
-}
-
-type progressWriter struct {
-	written int64
-	writer  io.WriterAt
-	size    int64
-}
-
-func (pw *progressWriter) WriteAt(p []byte, off int64) (int, error) {
-	atomic.AddInt64(&pw.written, int64(len(p)))
-
-	percentageDownloaded := float32(pw.written*100) / float32(pw.size)
-
-	log.Printf("File size:%d downloaded:%d percentage:%.2f%%\r", pw.size, pw.written, percentageDownloaded)
-
-	return pw.writer.WriteAt(p, off)
 }
 
 func main() {
@@ -100,10 +86,19 @@ func main() {
 	}
 
 	// Wrap the file in a progress counter
-	counter := &progressWriter{writer: f}
+	w := progress.NewWriterAt(f)
+	// Start a ticker to write out progress
+	go func() {
+		ctx := context.Background()
+		progressChan := progress.NewTicker(ctx, w, size, 1*time.Second)
+		for p := range progressChan {
+			fmt.Printf("\r%s downloaded, %v remaining...", byteCountDecimalSize(p.N()), p.Remaining().Round(time.Second))
+		}
+		fmt.Printf("\rdownload is complete")
+	}()
 
 	// Write the contents of S3 Object to the file
-	n, err := downloader.Download(counter, &s3.GetObjectInput{
+	n, err := downloader.Download(w, &s3.GetObjectInput{
 		Bucket: aws.String(*bucket),
 		Key:    aws.String(*key),
 	})
